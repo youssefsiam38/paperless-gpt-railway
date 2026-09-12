@@ -5,8 +5,8 @@ The published template. Reproduce it from this file if it ever has to be rebuilt
 | | |
 |---|---|
 | Name | paperless-gpt |
-| Code | _filled in at publication_ |
-| Template id | _filled in at publication_ |
+| Code | `paperless-gpt` |
+| Template id | `ca642fa6-9e0a-40c5-a560-13d222d8f31c` |
 | Category | AI/ML |
 | Image | `ghcr.io/youssefsiam38/paperless-gpt-railway:<version>` |
 | Icon | `assets/icon.png` |
@@ -28,16 +28,20 @@ The published template. Reproduce it from this file if it ever has to be rebuilt
 | `PAPERLESS_GPT_AUTH_USERNAME` | `admin` |
 | `PAPERLESS_GPT_AUTH_PASSWORD` | `${{secret(24)}}` |
 | `PAPERLESS_BASE_URL` | `https://paperless.example.com` |
-| `PAPERLESS_API_TOKEN` | empty |
+| `PAPERLESS_API_TOKEN` | empty, **marked optional** |
 | `LLM_PROVIDER` | `openai` |
 | `LLM_MODEL` | `gpt-4o-mini` |
-| `OPENAI_API_KEY` | empty |
+| `OPENAI_API_KEY` | empty, **marked optional** |
 | `PORT` | `8080` |
 | `TZ` | `UTC` |
 
 ## Notes
 
-- Every variable has a value or a generator, so a headless deploy works without a TTY.
+- Every variable has a value or a generator, so a headless deploy works without a TTY. **An empty
+  default is not a value**: `railway deploy -t <code>` fails with "Failed to prompt for options: The
+  input device is not a TTY" until the variable is also marked optional. That is why
+  `PAPERLESS_API_TOKEN` and `OPENAI_API_KEY` carry `isOptional: true`; they then arrive unset rather
+  than empty, which the entrypoint reads the same way.
 - **`PAPERLESS_BASE_URL` ships as a placeholder on purpose.** Until the deployer replaces it and
   supplies a token, the wrapper does not start the application and serves a page, behind the
   password, naming both variables. The deploy goes green either way, which is the point: the

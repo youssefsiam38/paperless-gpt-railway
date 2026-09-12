@@ -59,6 +59,16 @@ else
   fail "fail() does not write to stderr"
 fi
 
+section "the tests point at the right image"
+# `compose config --images` sorts by image name, so with the paperless stand-in in the file it can
+# hand back that image instead of the one under test, and every assertion then runs against a
+# container that exits immediately with no output.
+if grep -qE '^[a-zA-Z_]*img=.*--images' tests/smoke.sh tests/persistence.sh tests/railway-smoke.sh; then
+  fail "a test selects the image by sort order rather than by service name"
+else
+  pass "the image under test is selected by service name"
+fi
+
 section "workflows"
 # a stale image-override name from a copied workflow makes CI test the wrong image, and the failure
 # looks like a missing local build rather than a configuration mistake

@@ -50,4 +50,29 @@ wait_for_log() {
   done
 }
 
+# run_side_container NAME CONTAINER_PORT ARGS... -> prints the base URL it can be reached on.
+# The host port is left to Docker and read back, because a fixed one is a collision waiting to
+# happen on a shared machine or a CI runner, and a failed bind is invisible when the run is
+# redirected to /dev/null.
+run_side_container() {
+  local name=$1 cport=$2; shift 2
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  if ! docker run -d --name "$name" -p "127.0.0.1::${cport}" "$@" >"$TEST_TMP/${name}.run" 2>&1; then
+    printf 'could not start %s:\n%s\n' "$name" "$(cat "$TEST_TMP/${name}.run")" >&2
+    return 1
+  fi
+  local hport
+  hport=$(docker port "$name" "$cport" 2>/dev/null | head -1 | sed 's/.*://')
+  [ -n "$hport" ] || { printf 'no published port for %s\n' "$name" >&2; return 1; }
+  printf 'http://127.0.0.1:%s' "$hport"
+}
+
+# side_container_logs NAME -- for a failure message, never in the happy path.
+side_container_logs() { docker logs "$1" 2>&1 | tail -20; }
+
+# wrapper_image -- the image under test, by service name. `compose config --images` sorts by image
+# name rather than service name, so with a second service in the file `head -1` can hand back the
+# stand-in instead, and every container started from it then exits 0 with no output.
+wrapper_image() { compose config --format json | jq -r '.services.gpt.image'; }
+
 compose() { docker compose -f "$REPO_ROOT/compose.yaml" "$@"; }

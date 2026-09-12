@@ -64,14 +64,16 @@ assert_eq "the document route answers with json" "array" "$(jq -r 'type' <<<"$do
 section "an unconfigured instance says so rather than failing"
 # The template ships a placeholder URL so the first deploy goes green and the deployer is told what
 # to fill in, instead of watching a healthcheck time out with nothing to look at.
-img=$(compose config --images | head -1)
-docker rm -f paperless-gpt-unconfigured >/dev/null 2>&1 || true
-docker run -d --name paperless-gpt-unconfigured -e "PAPERLESS_GPT_AUTH_PASSWORD=$LOCAL_PASSWORD" \
-  -e PAPERLESS_BASE_URL=https://paperless.example.com -e PORT=18081 -p 127.0.0.1:18081:18081 "$img" >/dev/null
-for _ in $(seq 1 40); do [ "$(http_code --max-time 5 "http://127.0.0.1:18081/healthz" || true)" = "200" ] && break; sleep 2; done
-assert_eq "the health route is still green" "200" "$(http_code "http://127.0.0.1:18081/healthz")"
-assert_eq "and the page is still behind the password" "401" "$(http_code "http://127.0.0.1:18081/")"
-page=$(curl -s --max-time 20 -u "$(creds)" "http://127.0.0.1:18081/")
+img=$(wrapper_image)
+UNCONF=$(run_side_container paperless-gpt-unconfigured 18081 \
+  -e "PAPERLESS_GPT_AUTH_PASSWORD=$LOCAL_PASSWORD" \
+  -e PAPERLESS_BASE_URL=https://paperless.example.com -e PORT=18081 "$img") \
+  || die "could not start the unconfigured instance"
+wait_for_code "$UNCONF/healthz" 200 120 \
+  || { side_container_logs paperless-gpt-unconfigured; die "the unconfigured instance never answered"; }
+assert_eq "the health route is still green" "200" "$(http_code "$UNCONF/healthz")"
+assert_eq "and the page is still behind the password" "401" "$(http_code "$UNCONF/")"
+page=$(curl -s --max-time 20 -u "$(creds)" "$UNCONF/" || true)
 assert_contains "the page explains what is missing" "not connected yet" "$page"
 assert_contains "and names both variables" "PAPERLESS_API_TOKEN" "$page"
 assert_contains "the log says the application was not started" "not starting the application" "$(docker logs paperless-gpt-unconfigured 2>&1)"
@@ -98,10 +100,11 @@ if run_img -e "PAPERLESS_GPT_AUTH_PASSWORD=$LOCAL_PASSWORD" -e PAPERLESS_BASE_UR
 assert_not_contains "no secret echoed" "$LOCAL_PASSWORD" "$(cat "$TEST_TMP/ff.log")"
 
 section "the opt-out is deliberate and loud"
-docker rm -f paperless-gpt-open >/dev/null 2>&1 || true
-docker run -d --name paperless-gpt-open -e PAPERLESS_GPT_ALLOW_PUBLIC=true -e PORT=18083 -p 127.0.0.1:18083:18083 "$img" >/dev/null
-for _ in $(seq 1 40); do [ "$(http_code --max-time 5 "http://127.0.0.1:18083/healthz" || true)" = "200" ] && break; sleep 2; done
-assert_eq "an open instance serves anonymously" "200" "$(http_code "http://127.0.0.1:18083/")"
+OPEN=$(run_side_container paperless-gpt-open 18083 -e PAPERLESS_GPT_ALLOW_PUBLIC=true -e PORT=18083 "$img") \
+  || die "could not start the open instance"
+wait_for_code "$OPEN/healthz" 200 120 \
+  || { side_container_logs paperless-gpt-open; die "the open instance never answered"; }
+assert_eq "an open instance serves anonymously" "200" "$(http_code "$OPEN/")"
 assert_contains "and says so in the log" "Authentication is disabled" "$(docker logs paperless-gpt-open 2>&1)"
 docker rm -f paperless-gpt-open >/dev/null
 
